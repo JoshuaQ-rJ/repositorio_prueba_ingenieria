@@ -51,7 +51,7 @@ Plataforma de datos de extremo a extremo para **DataMart S.A.S.**, empresa de co
 
 ### Paso 1: Clonar y configurar variables de entorno
 ```bash
-git clone <url-del-repositorio>
+git clone [<url-del-repositorio>](https://github.com/JoshuaQ-rJ/repositorio_prueba_ingenieria)
 cd prueba_ingenieria_datos
 
 # Copiar el archivo de variables de entorno de ejemplo
