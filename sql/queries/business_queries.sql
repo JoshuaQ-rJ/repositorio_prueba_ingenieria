@@ -6,29 +6,35 @@
 -- ------------------------------------------------------------------------------
 -- PREGUNTA 1: ¿Cuál fue la evolución mensual de las ventas netas 
 -- (descontando devoluciones) durante el periodo cubierto por los datos?
+-- Optimizado utilizando la dimensión de calendario conforne (dim_dates)
 -- ------------------------------------------------------------------------------
 WITH monthly_sales AS (
     SELECT 
-        TO_CHAR(invoice_date_utc, 'YYYY-MM') AS year_month,
-        SUM(gross_revenue) AS gross_revenue
-    FROM fact_sales
-    GROUP BY TO_CHAR(invoice_date_utc, 'YYYY-MM')
+        d.year,
+        d.month,
+        TO_CHAR(d.full_date, 'YYYY-MM') AS year_month,
+        SUM(s.gross_revenue) AS gross_revenue
+    FROM fact_sales s
+    JOIN dim_dates d ON s.date_key = d.date_key
+    GROUP BY d.year, d.month, TO_CHAR(d.full_date, 'YYYY-MM')
 ),
 monthly_returns AS (
     SELECT 
-        TO_CHAR(return_date_utc, 'YYYY-MM') AS year_month,
-        SUM(return_amount) AS total_returned
-    FROM fact_returns
-    GROUP BY TO_CHAR(return_date_utc, 'YYYY-MM')
+        d.year,
+        d.month,
+        SUM(r.return_amount) AS total_returned
+    FROM fact_returns r
+    JOIN dim_dates d ON r.date_key = d.date_key
+    GROUP BY d.year, d.month
 )
 SELECT 
     s.year_month,
-    s.gross_revenue,
-    COALESCE(r.total_returned, 0.0) AS returns_amount,
+    ROUND(s.gross_revenue, 2) AS gross_revenue,
+    ROUND(COALESCE(r.total_returned, 0.0), 2) AS returns_amount,
     ROUND(s.gross_revenue - COALESCE(r.total_returned, 0.0), 2) AS net_revenue
 FROM monthly_sales s
-LEFT JOIN monthly_returns r ON s.year_month = r.year_month
-ORDER BY s.year_month;
+LEFT JOIN monthly_returns r ON s.year = r.year AND s.month = r.month
+ORDER BY s.year, s.month;
 
 
 -- ------------------------------------------------------------------------------

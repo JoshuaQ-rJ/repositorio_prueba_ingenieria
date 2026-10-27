@@ -5,7 +5,6 @@ Permite ejecutar pruebas del pipeline, linters y validaciones locales directamen
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 

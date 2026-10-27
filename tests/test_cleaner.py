@@ -5,9 +5,10 @@ Valida:
 2. Segregación de devoluciones (quantity <= 0 o invoice 'C...').
 3. Imputación de compradores anónimos a customer_id = -1.
 4. Normalización de StockCode (mayúsculas y sin espacios).
-5. Conversión de fechas a UTC.
+5. Conversión de fechas a UTC con timezone.
 6. Determinación de nombre canónico por moda.
-7. Cálculo de Gross Revenue y Net Revenue.
+7. Cálculo de Net Revenue con distribución proporcional exacta por línea.
+8. Deduplicación cruzada entre fuentes (daily vs history) por clave compuesta.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import pandas as pd
 from src.pipeline.cleaner import (
     calculate_net_revenue,
     compute_canonical_descriptions,
+    deduplicate_cross_sources,
     process_dataset,
     standardize_columns,
 )
@@ -200,28 +202,32 @@ def test_canonical_description_by_mode():
     assert canonical_map["85123A"] == "WHITE HANGING HEART T-LIGHT HOLDER"
 
 
-def test_net_revenue_calculation():
-    """Valida el cálculo de net_revenue = gross_revenue - devoluciones diarias."""
+def test_proportional_net_revenue_calculation():
+    """Valida que devoluciones se distribuyan proporcionalmente entre líneas de venta del mismo día y SKU."""
+    # Dos ventas del mismo SKU el mismo día: Línea 1 = $60 (60%), Línea 2 = $40 (40%)
     sales_df = pd.DataFrame(
         [
             {
-                "invoice_no": "1",
+                "invoice_no": "INV1",
                 "stock_code": "SKU1",
-                "quantity": 10,
-                "unit_price": 5.0,
-                "gross_revenue": 50.0,
+                "gross_revenue": 60.0,
+                "date_key": 20261020,
+            },
+            {
+                "invoice_no": "INV2",
+                "stock_code": "SKU1",
+                "gross_revenue": 40.0,
                 "date_key": 20261020,
             },
         ]
     )
+    # Una devolución de $20 en el mismo día
     returns_df = pd.DataFrame(
         [
             {
-                "invoice_no": "C1",
+                "invoice_no": "CINV1",
                 "stock_code": "SKU1",
-                "quantity": -2,
-                "unit_price": 5.0,
-                "return_amount": 10.0,
+                "return_amount": 20.0,
                 "date_key": 20261020,
             },
         ]
@@ -229,4 +235,57 @@ def test_net_revenue_calculation():
 
     net_df = calculate_net_revenue(sales_df, returns_df)
 
-    assert net_df.iloc[0]["net_revenue"] == 40.0
+    # La deducción de $20 debe ser:
+    # Línea 1: 60 - (20 * 0.6) = 60 - 12 = 48.0
+    # Línea 2: 40 - (20 * 0.4) = 40 - 8 = 32.0
+    # Suma total neta = 48 + 32 = 80.0 ($100 bruto - $20 devuelto)
+    assert net_df.iloc[0]["net_revenue"] == 48.0
+    assert net_df.iloc[1]["net_revenue"] == 32.0
+    assert round(net_df["net_revenue"].sum(), 2) == 80.0
+
+
+def test_cross_source_deduplication():
+    """Valida deduplicación por clave compuesta dando prioridad a la fuente diaria sobre la histórica."""
+    daily_sales = pd.DataFrame(
+        [
+            {
+                "invoice_no": "100",
+                "stock_code": "SKU_DUP",
+                "invoice_date_utc": "2026-10-20T10:00:00+00:00",
+                "quantity": 5,
+                "unit_price": 10.0,
+                "gross_revenue": 50.0,
+                "source_file": "data.csv",
+            }
+        ]
+    )
+    history_sales = pd.DataFrame(
+        [
+            {
+                "invoice_no": "100",
+                "stock_code": "SKU_DUP",
+                "invoice_date_utc": "2026-10-20T10:00:00+00:00",
+                "quantity": 5,
+                "unit_price": 10.0,
+                "gross_revenue": 50.0,
+                "source_file": "online_retail_II.csv",
+            },
+            {
+                "invoice_no": "101",
+                "stock_code": "SKU_UNIQUE",
+                "invoice_date_utc": "2026-10-20T11:00:00+00:00",
+                "quantity": 1,
+                "unit_price": 15.0,
+                "gross_revenue": 15.0,
+                "source_file": "online_retail_II.csv",
+            },
+        ]
+    )
+
+    deduped_sales, _ = deduplicate_cross_sources([daily_sales, history_sales], [])
+
+    # Debe haber solo 2 registros únicos (la factura 100 solapada y la 101 única)
+    assert len(deduped_sales) == 2
+    # El registro de la factura 100 debe haber conservado la fuente diaria (data.csv)
+    dup_row = deduped_sales[deduped_sales["invoice_no"] == "100"].iloc[0]
+    assert dup_row["source_file"] == "data.csv"

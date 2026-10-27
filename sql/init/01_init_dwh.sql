@@ -110,10 +110,11 @@ CREATE TABLE IF NOT EXISTS fact_returns (
 CREATE TABLE IF NOT EXISTS rejections_log (
     rejection_id BIGSERIAL PRIMARY KEY,
     source_file VARCHAR(100) NOT NULL,
-    raw_record_id VARCHAR(100),
+    raw_record_id VARCHAR(100) NOT NULL,
     rejection_reason VARCHAR(255) NOT NULL,
     rejected_at TIMESTAMPTZ DEFAULT NOW(),
-    payload JSONB NOT NULL
+    payload JSONB NOT NULL,
+    CONSTRAINT uq_rejection_record UNIQUE (source_file, raw_record_id)
 );
 
 -- ------------------------------------------------------------------------------

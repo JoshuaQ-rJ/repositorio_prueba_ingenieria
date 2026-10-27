@@ -23,13 +23,13 @@ x-airflow-common: &airflow-common
 
 services:
   catalog-api:
-    image: ${AIRFLOW_IMAGE_NAME}
+    image: python:3.12-slim
     container_name: catalog-api
-    command: python /opt/airflow/src/api/server.py
+    command: python /app/src/api/server.py
     environment:
-      PYTHONPATH: /opt/airflow
+      PYTHONPATH: /app
     volumes:
-      - ./src:/opt/airflow/src:ro
+      - ./src:/app/src:ro
     ports:
       - "8000:8000"
     healthcheck:

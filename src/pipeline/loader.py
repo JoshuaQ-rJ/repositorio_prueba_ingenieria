@@ -105,19 +105,11 @@ def load_dimensions(
 def load_facts(
     engine, sales_df: pd.DataFrame, returns_df: pd.DataFrame, source_file: str
 ) -> dict[str, int]:
-    """Carga hechos de ventas y devoluciones garantizando idempotencia por archivo de origen."""
+    """Carga hechos de ventas y devoluciones garantizando idempotencia por clave compuesta y ON CONFLICT."""
     counts = {"sales_loaded": 0, "returns_loaded": 0}
 
     with engine.begin() as conn:
-        # Idempotencia: Si ya existen registros del mismo archivo fuente, eliminarlos antes de reinsertar
-        conn.execute(
-            text(
-                "DELETE FROM fact_sales WHERE invoice_no IN (SELECT DISTINCT invoice_no FROM fact_sales WHERE country = :src)"
-            ),
-            {"src": source_file},  # Opcional, o por clave de factura
-        )
-
-        # Inserción de ventas en lotes
+        # Inserción de ventas en lotes (idempotente vía constraint uq_fact_sales_item)
         if not sales_df.empty:
             sales_records = sales_df.to_dict(orient="records")
             conn.execute(
@@ -135,7 +127,7 @@ def load_facts(
             )
             counts["sales_loaded"] = len(sales_records)
 
-        # Inserción de devoluciones en lotes
+        # Inserción de devoluciones en lotes (idempotente vía constraint uq_fact_returns_item)
         if not returns_df.empty:
             returns_records = returns_df.to_dict(orient="records")
             conn.execute(
@@ -157,7 +149,7 @@ def load_facts(
 
 
 def load_rejections(engine, rejections: list[dict[str, Any]]) -> int:
-    """Inserta registros rechazados en la tabla rejections_log."""
+    """Inserta registros rechazados en la tabla rejections_log con garantía de idempotencia."""
     if not rejections:
         return 0
 
@@ -166,6 +158,7 @@ def load_rejections(engine, rejections: list[dict[str, Any]]) -> int:
             text("""
                 INSERT INTO rejections_log (source_file, raw_record_id, rejection_reason, rejected_at, payload)
                 VALUES (:source_file, :raw_record_id, :rejection_reason, :rejected_at, :payload::jsonb)
+                ON CONFLICT (source_file, raw_record_id) DO NOTHING;
             """),
             rejections,
         )

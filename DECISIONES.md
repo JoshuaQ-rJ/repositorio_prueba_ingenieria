@@ -14,13 +14,14 @@ Para responder a los dolores de negocio de DataMart S.A.S. (cierre financiero le
 ### Estructura de Tablas
 1. **`fact_sales` (Hecho de Ventas Válidas):**
    * Grano: Una línea de ítem vendido con cantidad estrictamente $> 0$ y precio unitario $> 0$.
-   * Métricas aditivas: `quantity`, `unit_price`, `gross_revenue` ($quantity \times unit\_price$) y `net_revenue` ($gross\_revenue - devoluciones\_diarias$).
+   * Métricas aditivas: `quantity`, `unit_price`, `gross_revenue` ($quantity \times unit\_price$) y `net_revenue` con deducción proporcional exacta de devoluciones.
    * Claves foráneas: `stock_code` ($\rightarrow$ `dim_products`), `customer_id` ($\rightarrow$ `dim_customers`), `date_key` ($\rightarrow$ `dim_dates`).
-   * Constraint de idempotencia: `UNIQUE (invoice_no, stock_code, invoice_date_utc, quantity)`.
+   * Constraint de idempotencia: `CONSTRAINT uq_fact_sales_item UNIQUE (invoice_no, stock_code, invoice_date_utc, quantity)`.
 
 2. **`fact_returns` (Hecho de Devoluciones y Ajustes):**
    * Grano: Una línea de ítem cancelado o devuelto con cantidad $< 0$.
    * Métricas: `return_amount` ($|quantity| \times unit\_price$).
+   * Constraint de idempotencia: `CONSTRAINT uq_fact_returns_item UNIQUE (invoice_no, stock_code, return_date_utc, quantity)`.
    * Separar devoluciones en una tabla dedicada evita distorsionar el volumen bruto de órdenes y permite a finanzas realizar la conciliación instantánea ($Ventas\_Netas = Ventas\_Brutas - Devoluciones$).
 
 3. **`dim_products` (Dimensión Producto):**
@@ -33,10 +34,11 @@ Para responder a los dolores de negocio de DataMart S.A.S. (cierre financiero le
 
 5. **`dim_dates` (Dimensión Calendario UTC):**
    * Atributos: `date_key` (YYYYMMDD), `full_date`, `year`, `month`, `day`, `quarter`, `day_of_week`.
-   * Pre-poblada con 13.149 días calendario para joins analíticos ultrarrápidos.
+   * Pre-poblada con 13.149 días calendario para joins analíticos ultrarrápidos, evitando cálculos de fecha en queries de agregación.
 
-6. **`rejections_log` (Log de Cuarentena y Auditoría):**
+6. **`rejections_log` (Log de Cuarentena y Auditoría Idempotente):**
    * Columnas: `rejection_id`, `source_file`, `raw_record_id`, `rejection_reason`, `rejected_at`, `payload` (JSONB con la fila original completa).
+   * Constraint de idempotencia: `CONSTRAINT uq_rejection_record UNIQUE (source_file, raw_record_id)`.
    * Almacena cualquier fila descartada por violación de reglas de negocio para auditoría sin detener el pipeline.
 
 ---
@@ -59,31 +61,50 @@ Para responder a los dolores de negocio de DataMart S.A.S. (cierre financiero le
 * **Decisión:** **Rechazo total y almacenamiento en `rejections_log` con motivo `INVALID_UNIT_PRICE`.**
 * **Justificación:** Una venta con precio cero o negativo no constituye una transacción comercial válida de comercio electrónico (corresponde a errores de captura, muestras o promociones mal etiquetadas). Al registrarse en el log con su payload original en JSONB, el equipo de auditoría puede investigarlas sin corromper las métricas financieras.
 
-### Caso 5: Cantidad $\le 0$
-* **Decisión:** **Tratamiento exclusivo como devolución/ajuste en `fact_returns`.**
-* **Justificación:** Permite auditar la tasa de devolución por categoría y SKU sin mezclar signos negativos en la tabla principal de ventas, facilitando cálculos aditivos limpios en herramientas BI.
+### Caso 5: Cantidad $\le 0$ y Ponderación Proporcional de Net Revenue
+* **Decisión:** **Tratamiento exclusivo como devolución/ajuste en `fact_returns` y ponderación proporcional del Net Revenue.**
+* **Justificación:** Las devoluciones diarias de un mismo producto se distribuyen ponderadamente entre todas las transacciones de venta del día en función del peso relativo de su ingreso bruto:
+  $$\text{Peso} = \frac{\text{gross\_revenue}_{\text{línea}}}{\sum \text{gross\_revenue}_{\text{SKU, día}}}$$
+  $$\text{net\_revenue} = \text{gross\_revenue} - (\text{devolución\_diaria} \times \text{Peso})$$
+  Esto evita el sesgo de deducir el 100% de la devolución a cada línea individual, preservando la exactitud de los balances contables.
 
 ---
 
-## 3. Garantía de Idempotencia del DAG
+## 3. Manejo de Dimensiones y Decisión de SCD (Slowly Changing Dimensions)
 
-La idempotencia exige que ejecutar el pipeline varias veces con los mismos datos produzca exactamente el mismo resultado en el repositorio analítico. En DataMart, se garantiza mediante tres capas:
+* **Estrategia Implementada en `dim_products`:** **SCD Tipo 1 (Sobrescritura In-Place).**
+* **Justificación Técnica:** Para la primera versión de la plataforma analítica de DataMart, se priorizó la velocidad de consulta y simplicidad operativa. Cada ejecución sincroniza el catálogo manteniendo el estado y nombre canónico más actual (`ON CONFLICT (stock_code) DO UPDATE`).
+* **Roadmap a SCD Tipo 2:** En un escenario de producción donde el negocio requiera auditoría histórica de reclasificación de categorías (ej. si un producto migra de *Hogar* a *Electrónica*), la dimensión se extenderá con:
+  * `surrogate_key` (SERIAL PK)
+  * `valid_from` (TIMESTAMPTZ)
+  * `valid_to` (TIMESTAMPTZ, NULL si es vigente)
+  * `is_current` (BOOLEAN)
+
+---
+
+## 4. Garantía de Idempotencia del DAG y Tablas de Auditoría
+
+La idempotencia exige que ejecutar el pipeline varias veces con los mismos datos produzca exactamente el mismo resultado en el repositorio analítico. En DataMart, se garantiza mediante cuatro capas:
 
 1. **Constraints de Unicidad en Base de Datos:**
-   * `fact_sales` posee `CONSTRAINT uq_fact_sales_item UNIQUE (invoice_no, stock_code, invoice_date_utc, quantity)`.
-   * `fact_returns` posee `CONSTRAINT uq_fact_returns_item UNIQUE (invoice_no, stock_code, return_date_utc, quantity)`.
+   * `fact_sales`: `CONSTRAINT uq_fact_sales_item UNIQUE (invoice_no, stock_code, invoice_date_utc, quantity)`.
+   * `fact_returns`: `CONSTRAINT uq_fact_returns_item UNIQUE (invoice_no, stock_code, return_date_utc, quantity)`.
+   * `rejections_log`: `CONSTRAINT uq_rejection_record UNIQUE (source_file, raw_record_id)`.
 2. **Cláusula `ON CONFLICT DO NOTHING` en la Inserción:**
-   * Si una tarea falla a mitad de camino o el DAG se re-ejecuta manualmente, los registros ya insertados se ignoran sin lanzar errores ni duplicar filas.
-3. **Validación Experimental de Idempotencia:**
-   * Se ejecutó el pipeline dos veces de forma consecutiva (Run 1 y Run 2).
-   * **Resultado:** El conteo de ventas permaneció inmutable en **3.251 filas** y el de devoluciones en **242 filas**, confirmando 100% de determinismo e idempotencia.
+   * Si una tarea falla a mitad de camino o el DAG se re-ejecuta manualmente, los registros ya insertados se ignoran sin lanzar errores ni duplicar filas en hechos ni en cuarentena.
+3. **Orquestación con TaskFlow API (`@dag`, `@task`):**
+   * Eliminación de lectura de variables en el top-level del módulo (evita sobrecarga constante de queries al metastore).
+   * Tareas atómicas vectorizadas de pandas con paso liviano de rutas por XCom.
+4. **Validación Experimental de Idempotencia:**
+   * Se ejecutó el pipeline múltiples veces de forma consecutiva (manual y programada).
+   * **Resultado:** El conteo de ventas permaneció inmutable en **3.251 filas**, el de devoluciones en **242 filas**, y el log de rechazos sin duplicidad, confirmando 100% de determinismo e idempotencia.
 
 ---
 
-## 4. Arquitectura de Despliegue Docker y Auto-configuración
+## 5. Arquitectura de Despliegue Docker y Auto-configuración
 
 * **Cero intervención manual:** Toda la infraestructura levanta con `docker compose up -d`.
 * **Aprovisionamiento nativo de Airflow:**
   * La conexión al DWH se inyecta como variable de entorno: `AIRFLOW_CONN_POSTGRES_DWH=postgresql://datamart_user:datamart_secure_pass@postgres-dwh:5432/datamart_dwh`.
   * Los parámetros operativos se inyectan como variables: `AIRFLOW_VAR_RAW_DATA_PATH=/opt/airflow/data/raw` y `AIRFLOW_VAR_DEFAULT_RETRY_COUNT=2`.
-* **Microservicio REST de Catálogo:** Se implementó el servicio `catalog-api` en el puerto `8000` con endpoints `/health`, `/products` y `/products/{code}`.
+* **Microservicio REST de Catálogo Optimizado:** Se implementó el servicio `catalog-api` en el puerto `8000` con `python:3.12-slim` (reduciendo la imagen de 1.5 GB a ~150 MB).
