@@ -103,9 +103,12 @@ def datamart_daily_etl_pipeline():
 
     @task(task_id="transform_and_clean_data")
     def transform_and_clean_data(
-        daily_path: str, history_path: str, _catalog_path: str
+        daily_path: str, history_path: str, catalog_path: str
     ) -> str:
         """Aplica reglas de negocio vectorizadas, segregación y deduplicación por clave compuesta."""
+        import json
+        from pathlib import Path
+
         import pandas as pd
 
         from src.pipeline.cleaner import (
@@ -120,6 +123,18 @@ def datamart_daily_etl_pipeline():
         df_daily = pd.read_csv(daily_path)
         df_history = pd.read_csv(history_path)
 
+        # Cargar datos enriquecidos del catálogo REST si existen
+        catalog_api_data: dict[str, dict] = {}
+        if catalog_path and Path(catalog_path).exists():
+            try:
+                with open(catalog_path, encoding="utf-8") as f:
+                    catalog_api_data = json.load(f)
+                print(
+                    f"[TRANSFORM] Consumiendo {len(catalog_api_data)} productos del catálogo REST para enriquecimiento."
+                )
+            except Exception as e:
+                print(f"[TRANSFORM WARN] No se pudo leer {catalog_path}: {e}")
+
         # Determinar mapa canónico global de descripciones por moda
         combined_raw = pd.concat([df_daily, df_history], ignore_index=True)
         canonical_map = compute_canonical_descriptions(
@@ -128,10 +143,10 @@ def datamart_daily_etl_pipeline():
 
         # Procesar vectorizadamente ambas fuentes
         sales_daily, returns_daily, rej_daily, prod_daily = process_dataset(
-            df_daily, "daily_sales", canonical_map
+            df_daily, "daily_sales", canonical_map, catalog_api_data=catalog_api_data
         )
         sales_hist, returns_hist, rej_hist, prod_hist = process_dataset(
-            df_history, "history_sales", canonical_map
+            df_history, "history_sales", canonical_map, catalog_api_data=catalog_api_data
         )
 
         # Deduplicar registros solapados priorizando la fuente diaria

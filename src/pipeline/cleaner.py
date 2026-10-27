@@ -86,6 +86,7 @@ def process_dataset(
     df: pd.DataFrame,
     source_name: str,
     canonical_map: dict[str, str] | None = None,
+    catalog_api_data: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[dict[str, Any]], dict[str, dict[str, Any]]]:
     """Procesa, limpia y segrega las transacciones de manera vectorizada y de alto rendimiento.
 
@@ -314,8 +315,14 @@ def process_dataset(
     unique_skus = operational_df["stock_code"].unique()
     products_metadata: dict[str, dict[str, Any]] = {}
     for sku in unique_skus:
-        desc = canonical_map.get(sku, f"ITEM {sku}")
-        products_metadata[sku] = infer_category_and_metadata(sku, desc)
+        if catalog_api_data and sku in catalog_api_data:
+            meta = catalog_api_data[sku].copy()
+            if "canonical_name" not in meta or not meta["canonical_name"]:
+                meta["canonical_name"] = canonical_map.get(sku, f"ITEM {sku}")
+            products_metadata[sku] = meta
+        else:
+            desc = canonical_map.get(sku, f"ITEM {sku}")
+            products_metadata[sku] = infer_category_and_metadata(sku, desc)
 
     return sales_df, returns_df, rejections, products_metadata
 

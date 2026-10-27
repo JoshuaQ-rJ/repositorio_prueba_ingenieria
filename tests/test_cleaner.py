@@ -289,3 +289,40 @@ def test_cross_source_deduplication():
     # El registro de la factura 100 debe haber conservado la fuente diaria (data.csv)
     dup_row = deduped_sales[deduped_sales["invoice_no"] == "100"].iloc[0]
     assert dup_row["source_file"] == "data.csv"
+
+
+def test_catalog_api_enrichment():
+    """Valida que los metadatos provenientes del catálogo REST se incorporen en dim_products."""
+    raw_data = pd.DataFrame(
+        [
+            {
+                "Invoice": "2001",
+                "StockCode": "CAT_SKU_1",
+                "Description": "Generic description",
+                "Quantity": 1,
+                "InvoiceDate": "2026-10-20 10:00:00",
+                "Price": 25.0,
+                "Customer ID": 500,
+                "Country": "Colombia",
+            }
+        ]
+    )
+
+    catalog_data = {
+        "CAT_SKU_1": {
+            "code": "CAT_SKU_1",
+            "canonical_name": "REST ENRICHED OFFICIAL NAME",
+            "category": "Electrónica",
+            "supplier_country": "Colombia",
+            "is_active": True,
+        }
+    }
+
+    _, _, _, prod_meta = process_dataset(
+        raw_data, "test_source", catalog_api_data=catalog_data
+    )
+
+    assert "CAT_SKU_1" in prod_meta
+    assert prod_meta["CAT_SKU_1"]["canonical_name"] == "REST ENRICHED OFFICIAL NAME"
+    assert prod_meta["CAT_SKU_1"]["category"] == "Electrónica"
+
