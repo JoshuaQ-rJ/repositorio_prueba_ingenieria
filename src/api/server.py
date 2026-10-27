@@ -14,11 +14,10 @@ import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from src.api.main import OFFICIAL_CATEGORIES, _SEED_DATA, infer_category_and_metadata
+from src.api.main import _SEED_DATA, OFFICIAL_CATEGORIES, infer_category_and_metadata
 
 
 class CatalogApiHandler(BaseHTTPRequestHandler):
-
     def _send_json(self, status_code: int, data: dict):
         response_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status_code)
@@ -34,11 +33,14 @@ class CatalogApiHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
 
         if path == "/health" or path == "":
-            self._send_json(200, {
-                "status": "ok",
-                "service": "datamart-legacy-catalog-api",
-                "categories": OFFICIAL_CATEGORIES,
-            })
+            self._send_json(
+                200,
+                {
+                    "status": "ok",
+                    "service": "datamart-legacy-catalog-api",
+                    "categories": OFFICIAL_CATEGORIES,
+                },
+            )
             return
 
         if path == "/products":
@@ -46,12 +48,15 @@ class CatalogApiHandler(BaseHTTPRequestHandler):
             offset = int(query.get("offset", [0])[0])
             all_items = list(_SEED_DATA.values())
             paginated = all_items[offset : offset + limit]
-            self._send_json(200, {
-                "total": len(all_items),
-                "limit": limit,
-                "offset": offset,
-                "items": paginated,
-            })
+            self._send_json(
+                200,
+                {
+                    "total": len(all_items),
+                    "limit": limit,
+                    "offset": offset,
+                    "items": paginated,
+                },
+            )
             return
 
         if path.startswith("/products/"):

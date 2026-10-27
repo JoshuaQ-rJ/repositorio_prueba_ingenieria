@@ -9,7 +9,6 @@ Implementa:
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Any
 
@@ -20,14 +19,19 @@ from sqlalchemy import create_engine, text
 def get_dwh_engine():
     """Obtiene el motor SQLAlchemy para el Data Warehouse analítico.
 
-    Prioriza AIRFLOW_CONN_POSTGRES_DWH; si no existe, construye desde variables estándar.
+    Prioriza AIRFLOW_CONN_POSTGRES_DWH; si no existe, detecta si corre en Docker o Host local.
     """
     conn_uri = os.getenv("AIRFLOW_CONN_POSTGRES_DWH")
     if not conn_uri:
         user = os.getenv("POSTGRES_DWH_USER", "datamart_user")
         pwd = os.getenv("POSTGRES_DWH_PASSWORD", "datamart_secure_pass")
-        host = os.getenv("POSTGRES_DWH_HOST", "postgres-dwh")
-        port = os.getenv("POSTGRES_DWH_PORT", "5432")
+        is_docker = os.path.exists("/.dockerenv") or (
+            os.getenv("AIRFLOW_HOME") is not None
+        )
+        default_host = "postgres-dwh" if is_docker else "localhost"
+        default_port = "5432" if is_docker else "5433"
+        host = os.getenv("POSTGRES_DWH_HOST", default_host)
+        port = os.getenv("POSTGRES_DWH_PORT", default_port)
         db = os.getenv("POSTGRES_DWH_DB", "datamart_dwh")
         conn_uri = f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
 
@@ -38,7 +42,9 @@ def get_dwh_engine():
     return create_engine(conn_uri, pool_pre_ping=True)
 
 
-def load_dimensions(engine, products_metadata: dict[str, dict[str, Any]], *dataframes: pd.DataFrame) -> None:
+def load_dimensions(
+    engine, products_metadata: dict[str, dict[str, Any]], *dataframes: pd.DataFrame
+) -> None:
     """Inserta o actualiza dimensiones dim_products y dim_customers de forma idempotente."""
     with engine.begin() as conn:
         # 1. Dim Products
@@ -57,18 +63,30 @@ def load_dimensions(engine, products_metadata: dict[str, dict[str, Any]], *dataf
                         supplier_country = EXCLUDED.supplier_country,
                         is_active = EXCLUDED.is_active;
                 """),
-                {"code": stock_code, "name": name, "cat": cat, "country": country, "active": is_active},
+                {
+                    "code": stock_code,
+                    "name": name,
+                    "cat": cat,
+                    "country": country,
+                    "active": is_active,
+                },
             )
 
         # 2. Dim Customers (combina todos los dataframes proporcionados: ventas y devoluciones)
-        cust_frames = [df[["customer_id", "country"]] for df in dataframes if not df.empty and "customer_id" in df.columns]
+        cust_frames = [
+            df[["customer_id", "country"]]
+            for df in dataframes
+            if not df.empty and "customer_id" in df.columns
+        ]
         if cust_frames:
             all_custs = pd.concat(cust_frames, ignore_index=True)
             unique_custs = all_custs.drop_duplicates(subset=["customer_id"])
             for _, row in unique_custs.iterrows():
                 cid = int(row["customer_id"])
-                cust_country = str(row["country"]) if pd.notna(row["country"]) else "Unknown"
-                is_anon = (cid == -1)
+                cust_country = (
+                    str(row["country"]) if pd.notna(row["country"]) else "Unknown"
+                )
+                is_anon = cid == -1
                 conn.execute(
                     text("""
                         INSERT INTO dim_customers (customer_id, customer_code, country, is_anonymous)
@@ -84,14 +102,18 @@ def load_dimensions(engine, products_metadata: dict[str, dict[str, Any]], *dataf
                 )
 
 
-def load_facts(engine, sales_df: pd.DataFrame, returns_df: pd.DataFrame, source_file: str) -> dict[str, int]:
+def load_facts(
+    engine, sales_df: pd.DataFrame, returns_df: pd.DataFrame, source_file: str
+) -> dict[str, int]:
     """Carga hechos de ventas y devoluciones garantizando idempotencia por archivo de origen."""
     counts = {"sales_loaded": 0, "returns_loaded": 0}
 
     with engine.begin() as conn:
         # Idempotencia: Si ya existen registros del mismo archivo fuente, eliminarlos antes de reinsertar
         conn.execute(
-            text("DELETE FROM fact_sales WHERE invoice_no IN (SELECT DISTINCT invoice_no FROM fact_sales WHERE country = :src)"),
+            text(
+                "DELETE FROM fact_sales WHERE invoice_no IN (SELECT DISTINCT invoice_no FROM fact_sales WHERE country = :src)"
+            ),
             {"src": source_file},  # Opcional, o por clave de factura
         )
 

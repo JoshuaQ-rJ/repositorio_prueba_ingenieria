@@ -43,6 +43,7 @@ default_args = {
 # TAREAS DEL PIPELINE
 # ------------------------------------------------------------------------------
 
+
 def extract_daily_sales(**context) -> str:
     """Verifica e ingesta la fuente de transacciones de ventas diarias (data.csv o seed)."""
     daily_file = Path(RAW_DATA_PATH) / "data.csv"
@@ -67,7 +68,6 @@ def extract_history_sales(**context) -> str:
 def extract_product_catalog(**context) -> str:
     """Extrae el catálogo de productos consultando la API REST de DataMart (o fallback seed)."""
     import urllib.request
-    from src.api.main import infer_category_and_metadata
 
     catalog_api_url = os.getenv("CATALOG_API_URL", "http://catalog-api:8000")
     STAGING_PATH.mkdir(parents=True, exist_ok=True)
@@ -81,9 +81,13 @@ def extract_product_catalog(**context) -> str:
                 payload = json.loads(response.read().decode("utf-8"))
                 for item in payload.get("items", []):
                     catalog_data[item["code"]] = item
-                print(f"[CATALOG-API] Obtenidos {len(catalog_data)} productos vía REST API.")
+                print(
+                    f"[CATALOG-API] Obtenidos {len(catalog_data)} productos vía REST API."
+                )
     except Exception as e:
-        print(f"[CATALOG-API WARN] No se pudo conectar a {catalog_api_url} ({e}). Usando motor de catálogo interno.")
+        print(
+            f"[CATALOG-API WARN] No se pudo conectar a {catalog_api_url} ({e}). Usando motor de catálogo interno."
+        )
 
     # Guardar en staging ligero
     with open(catalog_staging_file, "w", encoding="utf-8") as f:
@@ -95,6 +99,7 @@ def extract_product_catalog(**context) -> str:
 def transform_and_clean_data(**context) -> str:
     """Aplica reglas de negocio, limpieza, segregación y deduplicación por clave compuesta."""
     import pandas as pd
+
     from src.pipeline.cleaner import (
         calculate_net_revenue,
         compute_canonical_descriptions,
@@ -105,7 +110,7 @@ def transform_and_clean_data(**context) -> str:
     ti = context["ti"]
     daily_path = ti.xcom_pull(task_ids="extract_daily_sales")
     history_path = ti.xcom_pull(task_ids="extract_history_sales")
-    catalog_path = ti.xcom_pull(task_ids="extract_product_catalog")
+    _catalog_path = ti.xcom_pull(task_ids="extract_product_catalog")
 
     print(f"[TRANSFORM] Procesando {daily_path} y {history_path}...")
     df_daily = pd.read_csv(daily_path)
@@ -114,14 +119,21 @@ def transform_and_clean_data(**context) -> str:
     # Determinar mapa canónico global
     combined_raw = pd.concat([df_daily, df_history], ignore_index=True)
     from src.pipeline.cleaner import standardize_columns
+
     canonical_map = compute_canonical_descriptions(standardize_columns(combined_raw))
 
     # Procesar ambas fuentes
-    sales_daily, returns_daily, rej_daily, prod_daily = process_dataset(df_daily, "daily_sales", canonical_map)
-    sales_hist, returns_hist, rej_hist, prod_hist = process_dataset(df_history, "history_sales", canonical_map)
+    sales_daily, returns_daily, rej_daily, prod_daily = process_dataset(
+        df_daily, "daily_sales", canonical_map
+    )
+    sales_hist, returns_hist, rej_hist, prod_hist = process_dataset(
+        df_history, "history_sales", canonical_map
+    )
 
     # Deduplicar registros solapados
-    all_sales, all_returns = deduplicate_cross_sources([sales_daily, sales_hist], [returns_daily, returns_hist])
+    all_sales, all_returns = deduplicate_cross_sources(
+        [sales_daily, sales_hist], [returns_daily, returns_hist]
+    )
 
     # Calcular Revenue Neto descontando devoluciones del mismo día
     all_sales = calculate_net_revenue(all_sales, all_returns)
@@ -161,13 +173,16 @@ def transform_and_clean_data(**context) -> str:
     with open(manifest_file, "w", encoding="utf-8") as f:
         json.dump(manifest, f)
 
-    print(f"[TRANSFORM DONE] Ventas: {len(all_sales)}, Devoluciones: {len(all_returns)}, Rechazos: {len(all_rejections)}")
+    print(
+        f"[TRANSFORM DONE] Ventas: {len(all_sales)}, Devoluciones: {len(all_returns)}, Rechazos: {len(all_rejections)}"
+    )
     return str(manifest_file)
 
 
 def load_dwh_tables(**context) -> dict[str, int]:
     """Carga dimensiones, ventas, devoluciones y rechazos en PostgreSQL DWH de forma idempotente."""
     import pandas as pd
+
     from src.pipeline.loader import (
         get_dwh_engine,
         load_dimensions,
@@ -178,16 +193,16 @@ def load_dwh_tables(**context) -> dict[str, int]:
     ti = context["ti"]
     manifest_path = ti.xcom_pull(task_ids="transform_and_clean_data")
 
-    with open(manifest_path, "r", encoding="utf-8") as f:
+    with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
 
     sales_df = pd.read_csv(manifest["sales_file"])
     returns_df = pd.read_csv(manifest["returns_file"])
 
-    with open(manifest["products_file"], "r", encoding="utf-8") as f:
+    with open(manifest["products_file"], encoding="utf-8") as f:
         prod_meta = json.load(f)
 
-    with open(manifest["rejections_file"], "r", encoding="utf-8") as f:
+    with open(manifest["rejections_file"], encoding="utf-8") as f:
         rejections = json.load(f)
 
     engine = get_dwh_engine()
@@ -201,32 +216,45 @@ def load_dwh_tables(**context) -> dict[str, int]:
     # 3. Cargar rechazos
     rej_count = load_rejections(engine, rejections)
 
-    print(f"[LOAD DWH SUCCESS] Ventas: {fact_counts['sales_loaded']}, Devoluciones: {fact_counts['returns_loaded']}, Rechazos: {rej_count}")
+    print(
+        f"[LOAD DWH SUCCESS] Ventas: {fact_counts['sales_loaded']}, Devoluciones: {fact_counts['returns_loaded']}, Rechazos: {rej_count}"
+    )
     return fact_counts
 
 
 def data_quality_gate(**context) -> None:
     """Verifica que los datos hayan sido persistidos y superen los umbrales de integridad."""
     from sqlalchemy import text
+
     from src.pipeline.loader import get_dwh_engine
 
     engine = get_dwh_engine()
     with engine.connect() as conn:
         sales_count = conn.execute(text("SELECT COUNT(*) FROM fact_sales")).scalar()
         returns_count = conn.execute(text("SELECT COUNT(*) FROM fact_returns")).scalar()
-        products_count = conn.execute(text("SELECT COUNT(*) FROM dim_products")).scalar()
-        customers_count = conn.execute(text("SELECT COUNT(*) FROM dim_customers")).scalar()
+        products_count = conn.execute(
+            text("SELECT COUNT(*) FROM dim_products")
+        ).scalar()
+        customers_count = conn.execute(
+            text("SELECT COUNT(*) FROM dim_customers")
+        ).scalar()
 
-    print(f"[QUALITY GATE] Métricas DWH -> Ventas: {sales_count}, Devoluciones: {returns_count}, SKUs: {products_count}, Clientes: {customers_count}")
+    print(
+        f"[QUALITY GATE] Métricas DWH -> Ventas: {sales_count}, Devoluciones: {returns_count}, SKUs: {products_count}, Clientes: {customers_count}"
+    )
 
     if sales_count == 0:
-        raise ValueError("Quality Gate Fallido: fact_sales no contiene registros cargados.")
+        raise ValueError(
+            "Quality Gate Fallido: fact_sales no contiene registros cargados."
+        )
     if products_count == 0:
         raise ValueError("Quality Gate Fallido: dim_products no contiene referencias.")
     if customers_count == 0:
         raise ValueError("Quality Gate Fallido: dim_customers no contiene clientes.")
 
-    print("✅ Quality Gate APROBADO: Todos los repositorios analíticos contienen datos consistentes.")
+    print(
+        "✅ Quality Gate APROBADO: Todos los repositorios analíticos contienen datos consistentes."
+    )
 
 
 # ------------------------------------------------------------------------------
@@ -240,7 +268,6 @@ with DAG(
     catchup=False,
     tags=["datamart", "etl", "retail", "dwh"],
 ) as dag:
-
     t_extract_daily = PythonOperator(
         task_id="extract_daily_sales",
         python_callable=extract_daily_sales,
@@ -272,4 +299,9 @@ with DAG(
     )
 
     # Dependencias explícitas
-    [t_extract_daily, t_extract_history, t_extract_catalog] >> t_transform >> t_load >> t_quality_gate
+    (
+        [t_extract_daily, t_extract_history, t_extract_catalog]
+        >> t_transform
+        >> t_load
+        >> t_quality_gate
+    )

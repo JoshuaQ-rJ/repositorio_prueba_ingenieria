@@ -35,7 +35,7 @@ SEED_PATH = Path(__file__).resolve().parent / "catalog_seed.json"
 _SEED_DATA: dict[str, dict[str, Any]] = {}
 
 if SEED_PATH.exists():
-    with open(SEED_PATH, "r", encoding="utf-8") as f:
+    with open(SEED_PATH, encoding="utf-8") as f:
         data = json.load(f)
         for item in data.get("products", []):
             code_key = str(item.get("code", "")).strip().upper()
@@ -43,7 +43,9 @@ if SEED_PATH.exists():
                 _SEED_DATA[code_key] = item
 
 
-def infer_category_and_metadata(stock_code: str, description: str = "") -> dict[str, Any]:
+def infer_category_and_metadata(
+    stock_code: str, description: str = ""
+) -> dict[str, Any]:
     """Infiere metadatos de producto de forma determinista para enriquecimiento del pipeline."""
     code_norm = str(stock_code).strip().upper()
     desc_upper = str(description).upper()
@@ -54,15 +56,79 @@ def infer_category_and_metadata(stock_code: str, description: str = "") -> dict[
 
     # Heurística de palabras clave para clasificar en las 5 categorías
     category = "Hogar"
-    if any(k in desc_upper for k in ["LIGHT", "CLOCK", "BATTERY", "ALARM", "TORCH", "ELECTRONIC", "USB", "PHONE"]):
+    if any(
+        k in desc_upper
+        for k in [
+            "LIGHT",
+            "CLOCK",
+            "BATTERY",
+            "ALARM",
+            "TORCH",
+            "ELECTRONIC",
+            "USB",
+            "PHONE",
+        ]
+    ):
         category = "Electrónica"
-    elif any(k in desc_upper for k in ["WARMER", "HEART", "BAG", "T-LIGHT", "BOTTLE", "CUP", "MUG", "BOX", "KITCHEN", "PLATE"]):
+    elif any(
+        k in desc_upper
+        for k in [
+            "WARMER",
+            "HEART",
+            "BAG",
+            "T-LIGHT",
+            "BOTTLE",
+            "CUP",
+            "MUG",
+            "BOX",
+            "KITCHEN",
+            "PLATE",
+        ]
+    ):
         category = "Hogar"
-    elif any(k in desc_upper for k in ["SCARF", "SHIRT", "DRESS", "GLOVES", "HAT", "KNITTED", "SOCK", "APRON", "COAT"]):
+    elif any(
+        k in desc_upper
+        for k in [
+            "SCARF",
+            "SHIRT",
+            "DRESS",
+            "GLOVES",
+            "HAT",
+            "KNITTED",
+            "SOCK",
+            "APRON",
+            "COAT",
+        ]
+    ):
         category = "Ropa"
-    elif any(k in desc_upper for k in ["BALL", "SPORT", "GYM", "BIKE", "BICYCLE", "FITNESS", "SWIM", "RUNNING"]):
+    elif any(
+        k in desc_upper
+        for k in [
+            "BALL",
+            "SPORT",
+            "GYM",
+            "BIKE",
+            "BICYCLE",
+            "FITNESS",
+            "SWIM",
+            "RUNNING",
+        ]
+    ):
         category = "Deportes"
-    elif any(k in desc_upper for k in ["PAPER", "CARD", "STICKER", "NOTEBOOK", "PENCIL", "PEN", "ERASER", "POSTAGE", "TAPE"]):
+    elif any(
+        k in desc_upper
+        for k in [
+            "PAPER",
+            "CARD",
+            "STICKER",
+            "NOTEBOOK",
+            "PENCIL",
+            "PEN",
+            "ERASER",
+            "POSTAGE",
+            "TAPE",
+        ]
+    ):
         category = "Papelería"
     else:
         # Asignación determinista por hash de SKU a una de las 5 categorías
@@ -73,7 +139,11 @@ def infer_category_and_metadata(stock_code: str, description: str = "") -> dict[
     supplier_country = SUPPLIER_COUNTRIES[supplier_idx]
 
     # Determinar nombre canónico o fallback
-    canonical_name = description.strip().upper() if description.strip() else f"PRODUCT SKU {code_norm}"
+    canonical_name = (
+        description.strip().upper()
+        if description.strip()
+        else f"PRODUCT SKU {code_norm}"
+    )
 
     metadata = {
         "code": code_norm,
