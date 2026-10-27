@@ -1,0 +1,166 @@
+{
+  "categories": ["Electrónica", "Hogar", "Ropa", "Deportes", "Papelería"],
+  "products": [
+    {
+      "code": "85123A",
+      "canonical_name": "WHITE HANGING HEART T-LIGHT HOLDER",
+      "category": "Hogar",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "71053",
+      "canonical_name": "WHITE METAL LANTERN",
+      "category": "Hogar",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "84406B",
+      "canonical_name": "CREAM CUPID HEARTS COAT HANGER",
+      "category": "Hogar",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "84029G",
+      "canonical_name": "KNITTED UNION FLAG HOT WATER BOTTLE",
+      "category": "Ropa",
+      "supplier_country": "México",
+      "is_active": true
+    },
+    {
+      "code": "84029E",
+      "canonical_name": "RED WOOLLY HOTTIE WHITE HEART",
+      "category": "Ropa",
+      "supplier_country": "México",
+      "is_active": true
+    },
+    {
+      "code": "22752",
+      "canonical_name": "SET 7 BABUSHKA NESTING BOXES",
+      "category": "Hogar",
+      "supplier_country": "Perú",
+      "is_active": true
+    },
+    {
+      "code": "21730",
+      "canonical_name": "GLASS STAR FROSTED T-LIGHT HOLDER",
+      "category": "Hogar",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "22632",
+      "canonical_name": "HAND WARMER RED RETROSPOT",
+      "category": "Ropa",
+      "supplier_country": "México",
+      "is_active": true
+    },
+    {
+      "code": "22633",
+      "canonical_name": "HAND WARMER UNION JACK",
+      "category": "Ropa",
+      "supplier_country": "México",
+      "is_active": true
+    },
+    {
+      "code": "22114",
+      "canonical_name": "HOT WATER BOTTLE TEA AND SYMPATHY",
+      "category": "Ropa",
+      "supplier_country": "Perú",
+      "is_active": true
+    },
+    {
+      "code": "22423",
+      "canonical_name": "REGENCY CAKESTAND 3 TIER",
+      "category": "Hogar",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "47566",
+      "canonical_name": "PARTY BUNTING",
+      "category": "Papelería",
+      "supplier_country": "Perú",
+      "is_active": true
+    },
+    {
+      "code": "84879",
+      "canonical_name": "ASSORTED COLOUR BIRD ORNAMENT",
+      "category": "Hogar",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "20725",
+      "canonical_name": "LUNCH BAG RED RETROSPOT",
+      "category": "Hogar",
+      "supplier_country": "México",
+      "is_active": true
+    },
+    {
+      "code": "20727",
+      "canonical_name": "LUNCH BAG BLACK SKULL",
+      "category": "Hogar",
+      "supplier_country": "México",
+      "is_active": true
+    },
+    {
+      "code": "20728",
+      "canonical_name": "LUNCH BAG CARS BLUE",
+      "category": "Hogar",
+      "supplier_country": "México",
+      "is_active": true
+    },
+    {
+      "code": "22383",
+      "canonical_name": "LUNCH BAG SUKI DESIGN",
+      "category": "Hogar",
+      "supplier_country": "México",
+      "is_active": true
+    },
+    {
+      "code": "22386",
+      "canonical_name": "JUMBO BAG PINK POLKADOT",
+      "category": "Hogar",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "85099B",
+      "canonical_name": "JUMBO BAG RED RETROSPOT",
+      "category": "Hogar",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "21931",
+      "canonical_name": "JUMBO STORAGE BAG SUKI",
+      "category": "Hogar",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "POST",
+      "canonical_name": "POSTAGE SERVICE",
+      "category": "Papelería",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "M",
+      "canonical_name": "MANUAL ADJUSTMENT",
+      "category": "Papelería",
+      "supplier_country": "Colombia",
+      "is_active": true
+    },
+    {
+      "code": "BANK CHARGES",
+      "canonical_name": "BANK CHARGES",
+      "category": "Papelería",
+      "supplier_country": "Colombia",
+      "is_active": false
+    }
+  ]
+}

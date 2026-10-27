@@ -1,0 +1,140 @@
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME}
+  user: "${AIRFLOW_UID:-50000}:0"
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_METADATA_USER}:${POSTGRES_METADATA_PASSWORD}@postgres-metadata:5432/${POSTGRES_METADATA_DB}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+    PYTHONPATH: /opt/airflow
+    AIRFLOW_CONN_POSTGRES_DWH: ${AIRFLOW_CONN_POSTGRES_DWH}
+    AIRFLOW_VAR_RAW_DATA_PATH: ${AIRFLOW_VAR_RAW_DATA_PATH}
+    AIRFLOW_VAR_DEFAULT_RETRY_COUNT: ${AIRFLOW_VAR_DEFAULT_RETRY_COUNT}
+    CATALOG_API_URL: "http://catalog-api:8000"
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./data:/opt/airflow/data
+    - ./src:/opt/airflow/src
+    - ./sql:/opt/airflow/sql
+    - ./tests:/opt/airflow/tests
+    - ./logs:/opt/airflow/logs
+  restart: unless-stopped
+
+services:
+  catalog-api:
+    image: ${AIRFLOW_IMAGE_NAME}
+    container_name: catalog-api
+    command: python /opt/airflow/src/api/server.py
+    environment:
+      PYTHONPATH: /opt/airflow
+    volumes:
+      - ./src:/opt/airflow/src:ro
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  postgres-metadata:
+    image: postgres:16-alpine
+    container_name: postgres-metadata
+    environment:
+      POSTGRES_USER: ${POSTGRES_METADATA_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_METADATA_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_METADATA_DB}
+    ports:
+      - "${POSTGRES_METADATA_PORT}:5432"
+    volumes:
+      - postgres-metadata-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_METADATA_USER} -d ${POSTGRES_METADATA_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  postgres-dwh:
+    image: postgres:16-alpine
+    container_name: postgres-dwh
+    environment:
+      POSTGRES_USER: ${POSTGRES_DWH_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_DWH_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DWH_DB}
+    ports:
+      - "${POSTGRES_DWH_PORT}:5432"
+    volumes:
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+      - postgres-dwh-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_DWH_USER} -d ${POSTGRES_DWH_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    restart: "no"
+    command:
+      - bash
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username "${_AIRFLOW_WWW_USER_USERNAME}" \
+          --password "${_AIRFLOW_WWW_USER_PASSWORD}" \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com || true
+    depends_on:
+      postgres-metadata:
+        condition: service_healthy
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres-metadata:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres-metadata:
+        condition: service_healthy
+      postgres-dwh:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-metadata-data:
+  postgres-dwh-data:
