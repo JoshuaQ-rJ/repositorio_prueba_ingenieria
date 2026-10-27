@@ -1,6 +1,7 @@
 # DataMart S.A.S. — Pipeline ETL & Data Warehouse
 **Prueba de Desempeño — Ingeniería de Datos Cohorte 7 (Riwi)**  
-**Solución Orquestada con Apache Airflow, Docker y PostgreSQL**
+**Repositorio Oficial:** [https://github.com/JoshuaQ-rJ/repositorio_prueba_ingenieria](https://github.com/JoshuaQ-rJ/repositorio_prueba_ingenieria)  
+**Solución Orquestada con Apache Airflow, Docker, PostgreSQL y uv**
 
 ---
 
@@ -48,11 +49,12 @@ Plataforma de datos de extremo a extremo para **DataMart S.A.S.**, empresa de co
 ### Prerrequisitos
 * Docker y Docker Compose (v2+) instalados y corriendo.
 * Git.
+* Python 3.12 y [uv](https://docs.astral.sh/uv/) (opcional para desarrollo local y tests).
 
 ### Paso 1: Clonar y configurar variables de entorno
 ```bash
-git clone [<url-del-repositorio>](https://github.com/JoshuaQ-rJ/repositorio_prueba_ingenieria)
-cd prueba_ingenieria_datos
+git clone https://github.com/JoshuaQ-rJ/repositorio_prueba_ingenieria.git
+cd repositorio_prueba_ingenieria
 
 # Copiar el archivo de variables de entorno de ejemplo
 cp .env.example .env

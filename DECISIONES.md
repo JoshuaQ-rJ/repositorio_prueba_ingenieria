@@ -1,5 +1,6 @@
 # Documento de Decisiones Técnicas y de Negocio
 **Proyecto:** DataMart S.A.S. — Pipeline ETL & Data Warehouse  
+**Repositorio Oficial:** [https://github.com/JoshuaQ-rJ/repositorio_prueba_ingenieria](https://github.com/JoshuaQ-rJ/repositorio_prueba_ingenieria)  
 **Rol:** Data Engineer / Architect  
 **Evaluador:** Riwi — Cohorte 7  
 

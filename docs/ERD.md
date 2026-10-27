@@ -1,4 +1,5 @@
 # DataMart Entity-Relationship Diagram (ERD) & Dimensional Catalog
+**Repositorio Oficial:** [https://github.com/JoshuaQ-rJ/repositorio_prueba_ingenieria](https://github.com/JoshuaQ-rJ/repositorio_prueba_ingenieria)  
 
 ## 1. Dimensional Architecture Overview
 
